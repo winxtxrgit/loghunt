@@ -72,8 +72,8 @@ weak signal alone is never enough.
 Per-IP rules miss an attacker who rents 19 machines and sends eight login attempts from each.
 loghunt fingerprints every IP by **the exact set of requests it made plus its User-Agent**. When
 3 or more IPs share a fingerprint, and the group *added up* does something a single IP would be
-flagged for (20+ login attempts, 3+ probe paths, any attack payload, mostly 4xx), the group
-becomes a campaign and every member is flagged with the reason:
+flagged for (20+ login attempts, 3+ probe paths, any attack payload, or a member already
+flagged on its own), the group becomes a campaign and every member is flagged with the reason:
 
 ```
 Campaign C1  19 IPs across 4 networks · 152 requests
@@ -81,7 +81,9 @@ Campaign C1  19 IPs across 4 networks · 152 requests
 ```
 
 Ordinary visitors do not group this way. Two people who both open `/` and `/pricing` in the same
-browser share a fingerprint, but the group does nothing suspicious, so it is not a campaign.
+browser share a fingerprint, but the group does nothing suspicious, so it is not a campaign. A
+crowd of 404s is not enough either: when another site hotlinks an image you deleted, many real
+browsers request the same missing file, and that is not an attack.
 
 ## The HTML report
 
@@ -96,7 +98,9 @@ suspicious IP with its reasons. Light and dark themes follow your system.
 **Safe to open.** Everything in an access log is written by whoever sent the request, including
 attackers. The report HTML-escapes every value that comes from the log and sets a
 Content-Security-Policy of `default-src 'none'`, so it loads nothing from the network.
-`tests/test_report.py` feeds it `<script>` tags in the URL and User-Agent to keep it that way.
+The terminal summary prints control characters as `\xNN`, so a crafted log line cannot recolour
+or retitle your terminal either. `tests/test_report.py` feeds both `<script>` tags and escape
+sequences to keep it that way.
 
 ## Speed
 

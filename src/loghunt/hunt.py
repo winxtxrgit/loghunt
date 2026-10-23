@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
@@ -61,22 +60,19 @@ class Result:
         """``(bucket start, all requests, flagged requests)``, at most *buckets* rows."""
         if self.start is None or self.end is None:
             return []
-        total: Counter[int] = Counter()
-        flagged: Counter[int] = Counter()
+        first, last = self.start // 60, self.end // 60
+        width = max(1, -(-(last - first + 1) // buckets))  # minutes per bucket, rounded up
+        size = (last - first) // width + 1
+        total, flagged = [0] * size, [0] * size
         flagged_ips = {s.ip for s in self.suspects}
         for entry in self.stats.values():
-            total.update(entry.per_minute)
-            if entry.ip in flagged_ips:
-                flagged.update(entry.per_minute)
-        first, last = self.start // 60, self.end // 60
-        width = max(1, -(-(last - first + 1) // buckets))
-        rows = []
-        for bucket in range(first, last + 1, width):
-            minutes = range(bucket, min(bucket + width, last + 1))
-            rows.append(
-                (bucket * 60, sum(total[m] for m in minutes), sum(flagged[m] for m in minutes))
-            )
-        return rows
+            is_flagged = entry.ip in flagged_ips
+            for minute, count in entry.per_minute.items():
+                index = (minute - first) // width
+                total[index] += count
+                if is_flagged:
+                    flagged[index] += count
+        return [((first + i * width) * 60, total[i], flagged[i]) for i in range(size)]
 
 
 def hunt(lines: Iterable[str], limits: Thresholds | None = None) -> Result:

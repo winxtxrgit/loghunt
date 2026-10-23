@@ -68,3 +68,15 @@ def test_min_score_filters_suspects():
     lines = [entry("192.0.2.10", "/", agent="curl/8.5.0")]
     assert hunt(lines).suspects == []
     assert [s.ip for s in hunt(lines, Thresholds(min_score=10)).suspects] == ["192.0.2.10"]
+
+
+def test_double_encoded_traversal_is_a_payload():
+    target = "/static/%252e%252e%252f%252e%252e%252fetc%252fpasswd"
+    assert rules_for([entry("203.0.113.8", target)], "203.0.113.8") == {"attack-payload"}
+
+
+def test_ordinary_query_strings_are_not_payloads():
+    from loghunt.signatures import has_payload
+
+    for target in ("/search?q=rock+and+roll", "/p?id=10&sort=asc", "/docs/a%20b", "/?q=1%2B1"):
+        assert not has_payload(target), target

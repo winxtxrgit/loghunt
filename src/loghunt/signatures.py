@@ -83,7 +83,12 @@ def is_login(path: str) -> bool:
 @lru_cache(maxsize=65536)
 def has_payload(target: str) -> bool:
     if "%" in target or "+" in target:
-        target = unquote_plus(target)
+        # Decode twice: attackers double-encode (%252e%252e%252f) to slip past one decode.
+        for _ in range(2):
+            decoded = unquote_plus(target)
+            if decoded == target:
+                break
+            target = decoded
     return PAYLOAD_RE.search(target.lower()) is not None
 
 

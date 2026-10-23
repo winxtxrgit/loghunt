@@ -47,3 +47,32 @@ def test_reads_stdin(monkeypatch, capsys):
 def test_missing_file(capsys):
     assert main(["/no/such/access.log"]) == 2
     assert "loghunt:" in capsys.readouterr().err
+
+
+def test_top_zero_shows_no_rows(capsys):
+    assert main([str(SAMPLE), "--top", "0"]) == 0
+    assert "more rows in the report" in capsys.readouterr().out
+
+
+def test_out_of_range_options_are_rejected(capsys):
+    for args in (["--min-score", "101"], ["--min-score", "-1"], ["--top", "-3"]):
+        try:
+            main([str(SAMPLE), *args])
+        except SystemExit as exit:
+            assert exit.code == 2
+        else:
+            raise AssertionError(args)
+    assert "must be between" in capsys.readouterr().err
+
+
+def test_truncated_gzip_is_an_error_not_a_traceback(tmp_path, capsys):
+    broken = tmp_path / "cut.gz"
+    broken.write_bytes(SAMPLE.read_bytes()[:50_000])
+    assert main([str(broken)]) == 2
+    assert "cannot read the log" in capsys.readouterr().err
+
+
+def test_unwritable_output_is_an_error_not_a_traceback(tmp_path, capsys):
+    target = tmp_path / "missing-dir" / "report.html"
+    assert main([str(SAMPLE), "-o", str(target)]) == 2
+    assert "cannot write" in capsys.readouterr().err

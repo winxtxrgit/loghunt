@@ -56,3 +56,29 @@ def test_terminal_groups_campaign_members(sample):
 
 def test_terminal_without_suspects():
     assert "No suspicious IPs found." in terminal(hunt([entry("100.64.0.1")]))
+
+
+def test_terminal_neutralises_control_characters():
+    esc = "\x1b"
+    line = (
+        f'1.2.3.4{esc}[31m - - [20/Oct/2026:08:00:01 +0000] "GET /.env HTTP/1.1" 404 1 "-" '
+        f'"sqlmap {esc}]0;pwned\x07"'
+    )
+    text = terminal(hunt([line]), color=False)
+    assert esc not in text
+    assert "\x07" not in text
+    assert "1.2.3.4\\x1b[31m" in text
+
+
+def test_period_shows_the_date_again_across_midnight():
+    lines = [entry("100.64.0.1", second=0), entry("100.64.0.1", second=20 * 3600)]
+    assert "(2026-10-20 01:00 → 21:00 UTC)" in terminal(hunt(lines))
+    lines = [entry("100.64.0.1", second=0), entry("100.64.0.1", second=26 * 3600)]
+    assert "2026-10-20 01:00 → 2026-10-21 03:00" in terminal(hunt(lines))
+
+
+def test_timeline_accounts_for_every_request(sample):
+    rows = sample.timeline()
+    assert 0 < len(rows) <= 120
+    assert sum(total for _, total, _ in rows) == sample.parsed
+    assert sum(flagged for _, _, flagged in rows) == sample.flagged_requests

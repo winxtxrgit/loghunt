@@ -44,10 +44,8 @@ def _group_reason(
     payloads = sum(m.payload_hits for m in members)
     if payloads:
         return f"{payloads} requests with attack payloads together"
-    requests = sum(m.requests for m in members)
-    errors = sum(m.client_errors for m in members)
-    if requests >= limits.error_min_requests and errors / requests >= limits.error_ratio:
-        return f"{errors / requests:.0%} of {requests:,} requests failed with 4xx"
+    # No 4xx-ratio signal here: many real browsers request the same missing file when
+    # another site hotlinks it, and a high 4xx ratio alone does not flag a single IP either.
     flagged = [
         m for m in members if sum(f.score for f in findings.get(m.ip, ())) >= limits.min_score
     ]

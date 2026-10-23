@@ -55,3 +55,28 @@ def test_different_agents_split_campaigns():
     lines = lines[:24] + [line.replace("198.18.", "198.19.") for line in lines[24:]]
     result = hunt(lines)
     assert sorted(len(c.ips) for c in result.campaigns) == [4, 4]
+
+
+def test_hotlinked_missing_image_is_not_a_campaign():
+    # Another site embeds an image that was deleted here: many real browsers, one 404 each.
+    lines = [entry(f"100.64.9.{n}", "/img/old.png", second=n, status=404) for n in range(40)]
+    result = hunt(lines)
+    assert result.campaigns == []
+    assert result.suspects == []
+
+
+def test_probers_running_one_script_are_grouped():
+    def probes(paths):
+        return [
+            entry(f"198.18.7.{n}", path, second=n * 60, status=404, agent=BOT)
+            for n in range(1, 6)
+            for path in paths
+        ]
+
+    # Two probe paths each: below the threshold for one IP, and for the group too.
+    assert hunt(probes(("/.env", "/.git/config"))).campaigns == []
+
+    # Three each: every IP is flagged, and the five are reported as one campaign.
+    result = hunt(probes(("/.env", "/.git/config", "/backup.zip")))
+    assert [len(c.ips) for c in result.campaigns] == [5]
+    assert all("campaign" in {f.rule for f in s.findings} for s in result.suspects)

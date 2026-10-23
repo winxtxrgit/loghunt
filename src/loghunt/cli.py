@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+import zlib
 from pathlib import Path
 
 from . import __version__
@@ -11,6 +13,16 @@ from .hunt import hunt
 from .parser import read_lines
 from .report import terminal, to_blocklist, to_html, to_json, use_color
 from .rules import Thresholds
+
+
+def _bounded(low: int, high: int):
+    def parse(text: str) -> int:
+        value = int(text)
+        if not low <= value <= high:
+            raise argparse.ArgumentTypeError(f"must be between {low} and {high}")
+        return value
+
+    return parse
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,14 +44,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--min-score",
-        type=int,
+        type=_bounded(0, 100),
         default=Thresholds.min_score,
         metavar="N",
         help="report IPs scoring at least N, 0-100 (default: %(default)s)",
     )
     parser.add_argument(
         "--top",
-        type=int,
+        type=_bounded(0, 1_000_000),
         default=15,
         metavar="N",
         help="rows in the terminal summary (default: %(default)s)",
@@ -66,27 +78,38 @@ def main(argv: list[str] | None = None) -> int:
             stream.reconfigure(errors="replace")
     try:
         result = hunt(read_lines(args.logs), Thresholds(min_score=args.min_score))
-    except OSError as error:
-        print(f"loghunt: {error}", file=sys.stderr)
+    except (OSError, EOFError, zlib.error) as error:  # EOFError: a truncated .gz
+        print(f"loghunt: cannot read the log: {error}", file=sys.stderr)
         return 2
+    except KeyboardInterrupt:
+        return 130
 
     # With --json - the terminal summary would corrupt the JSON, so it goes to stderr.
     summary_stream = sys.stderr if args.json == "-" else sys.stdout
-    print(terminal(result, top=args.top, color=use_color(summary_stream)), file=summary_stream)
-
-    written = []
-    if args.report:
-        _write(args.report, to_html(result, args.logs))
-        written.append(f"report: {args.report}")
-    if args.blocklist:
-        _write(args.blocklist, to_blocklist(result))
-        written.append(f"blocklist: {args.blocklist}")
-    if args.json:
-        _write(args.json, to_json(result))
-        if args.json != "-":
-            written.append(f"json: {args.json}")
-    if written:
-        print("\nWrote " + " · ".join(written), file=summary_stream)
+    try:
+        print(terminal(result, top=args.top, color=use_color(summary_stream)), file=summary_stream)
+        written = []
+        if args.report:
+            _write(args.report, to_html(result, args.logs))
+            written.append(f"report: {args.report}")
+        if args.blocklist:
+            _write(args.blocklist, to_blocklist(result))
+            written.append(f"blocklist: {args.blocklist}")
+        if args.json:
+            _write(args.json, to_json(result))
+            if args.json != "-":
+                written.append(f"json: {args.json}")
+        if written:
+            print("\nWrote " + " · ".join(written), file=summary_stream)
+    except BrokenPipeError:
+        # `loghunt access.log | head`: stop quietly, as other command line tools do.
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        return 1
+    except OSError as error:
+        print(
+            f"loghunt: cannot write {error.filename or 'output'}: {error.strerror}", file=sys.stderr
+        )
+        return 2
 
     return 1 if args.fail and result.suspects else 0
 

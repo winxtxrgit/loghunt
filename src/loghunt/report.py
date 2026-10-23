@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from datetime import datetime, timezone
 from html import escape
@@ -22,6 +23,13 @@ def _when(ts: int | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
     return datetime.fromtimestamp(ts, timezone.utc).strftime(fmt)
 
 
+def _period(start: int | None, end: int | None) -> str:
+    """``2026-10-20 01:00 → 02:59``, repeating the date only when the period crosses one."""
+    if start is not None and end is not None and _when(start, "%Y%m%d") == _when(end, "%Y%m%d"):
+        return f"{_when(start)} → {_when(end, '%H:%M')}"
+    return f"{_when(start)} → {_when(end)}"
+
+
 def _span(seconds: int) -> str:
     hours, rest = divmod(max(0, seconds), 3600)
     minutes = rest // 60
@@ -29,6 +37,18 @@ def _span(seconds: int) -> str:
 
 
 # --------------------------------------------------------------------------- terminal
+
+
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def _clean(text: str) -> str:
+    """*text* with control characters spelled out as ``\\xNN``.
+
+    Log fields are attacker-controlled; a raw ESC in an IP or User-Agent could otherwise
+    recolour, retitle or rewrite the terminal that shows the summary.
+    """
+    return _CONTROL.sub(lambda m: f"\\x{ord(m.group()):02x}", text)
 
 
 class _Style:
@@ -51,7 +71,7 @@ def terminal(result: Result, top: int = 15, color: bool = False) -> str:
     out.append(
         style("loghunt", "1;36")
         + f"  {result.parsed:,} requests · {len(result.stats):,} IPs · {span}"
-        + f"  ({_when(result.start)} → {_when(result.end, '%H:%M')} UTC)"
+        + f"  ({_period(result.start, result.end)} UTC)"
     )
     if result.skipped:
         out.append(style(f"         {result.skipped:,} lines were not access log entries", "2"))
@@ -85,7 +105,7 @@ def terminal(result: Result, top: int = 15, color: bool = False) -> str:
                 f"{len(members)} IPs ({campaign.id})",
                 sum(m.stats.requests for m in members),
                 max(m.stats.peak_per_minute for m in members),
-                campaign.reason,
+                _clean(campaign.reason),
                 0,
             )
         )
@@ -97,17 +117,17 @@ def terminal(result: Result, top: int = 15, color: bool = False) -> str:
             (
                 suspect.score,
                 suspect.severity,
-                suspect.ip,
+                _clean(suspect.ip),
                 suspect.stats.requests,
                 suspect.stats.peak_per_minute,
-                reasons[0],
+                _clean(reasons[0]),
                 len(reasons) - 1,
             )
         )
     rows.sort(key=lambda row: (-row[0], -row[3]))
 
     shown = rows[:top]
-    ip_width = max(len("IP"), *(len(row[2]) for row in shown))
+    ip_width = max([len("IP"), *(len(row[2]) for row in shown)])
     header = f"{'SCORE':>5}  {'IP':<{ip_width}}  {'REQS':>7}  {'PEAK/MIN':>8}  WHY"
     out.append(style(header, "2"))
     colors = {"high": "1;31", "medium": "33", "low": "2"}
@@ -131,9 +151,9 @@ def terminal(result: Result, top: int = 15, color: bool = False) -> str:
             + f"  {len(campaign.ips)} IPs across {campaign.networks} networks"
             + f" · {campaign.total_requests:,} requests"
         )
-        out.append(f"  {campaign.reason}")
-        out.append(style(f"  User-Agent: {campaign.agent[:90]}", "2"))
-        out.append(style(f"  Requests:   {', '.join(campaign.requests[:4])}", "2"))
+        out.append(f"  {_clean(campaign.reason)}")
+        out.append(style(f"  User-Agent: {_clean(campaign.agent[:90])}", "2"))
+        out.append(style(f"  Requests:   {_clean(', '.join(campaign.requests[:4]))}", "2"))
     return "\n".join(out)
 
 
@@ -274,6 +294,12 @@ def _timeline_svg(rows: list[tuple[int, int, int]]) -> str:
     )
 
 
+def _active(first: int, last: int) -> str:
+    if _when(first, "%Y%m%d") == _when(last, "%Y%m%d"):
+        return f"{_when(first, '%H:%M')}–{_when(last, '%H:%M')}"
+    return f"{_when(first, '%m-%d %H:%M')}–{_when(last, '%m-%d %H:%M')}"
+
+
 def _suspect_row(suspect: Suspect) -> str:
     stats = suspect.stats
     reasons = "".join(f"<li>{escape(f.reason)}</li>" for f in suspect.findings)
@@ -286,7 +312,7 @@ def _suspect_row(suspect: Suspect) -> str:
         f'<td class="num">{stats.requests:,}</td>'
         f'<td class="num">{stats.peak_per_minute:,}</td>'
         f'<td class="num">{errors:.0%}</td>'
-        f'<td class="num">{_when(stats.first, "%H:%M")}–{_when(stats.last, "%H:%M")}</td>'
+        f'<td class="num">{escape(_active(stats.first, stats.last))}</td>'
         f"<td><ul>{reasons}</ul>{agent_html}</td></tr>"
     )
 
@@ -335,7 +361,7 @@ def to_html(result: Result, sources: list[str]) -> str:
 <title>loghunt report</title><style>{_CSS}</style></head>
 <body><main>
 <h1>loghunt report</h1>
-<p class="sub">{names} · {_when(result.start)} → {_when(result.end)} UTC
+<p class="sub">{names} · {_period(result.start, result.end)} UTC
 ({_span((result.end or 0) - (result.start or 0))})</p>
 <div class="cards">{cards_html}</div>
 

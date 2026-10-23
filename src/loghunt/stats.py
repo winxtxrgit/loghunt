@@ -9,9 +9,10 @@ from urllib.parse import unquote_plus
 from .parser import Request
 from .signatures import has_payload, is_login, is_probe
 
-# Distinct requests remembered per IP. Scripted bots repeat a short list; an IP
-# past the cap is a crawler or a busy proxy and is not fingerprinted.
-PATH_CAP = 500
+# Distinct requests remembered per IP, for campaign fingerprints. Scripted bots repeat a
+# short list; an IP past the cap is a crawler or a busy proxy and is not fingerprinted.
+# Keep it above Thresholds.campaign_max_paths.
+PATH_CAP = 64
 PROBE_CAP = 200
 SAMPLE_CAP = 3
 
