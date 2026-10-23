@@ -48,13 +48,21 @@ def _minute(stamp: str, zone: str) -> int:
     if zone[0] == "-":
         offset = -offset
     moment = (int(year), _MONTHS[month], int(day), int(hour), int(minute), 0)
+    # A corrupt line dated 1970 or 9999 would stretch the timeline over decades.
+    if not (
+        1990 <= moment[0] <= 2100 and 1 <= moment[2] <= 31 and moment[3] < 24 and moment[4] < 60
+    ):
+        raise ValueError(f"timestamp out of range: {stamp}")
     return calendar.timegm(moment) - offset
 
 
 def parse_time(value: str) -> int:
     """``20/Oct/2026:08:00:01 +0700`` as Unix seconds."""
     # Lines from the same minute differ only in the seconds, so cache per minute.
-    return _minute(value[:17], value[21:26]) + int(value[18:20])
+    second = int(value[18:20])
+    if not 0 <= second <= 60 or value[17] != ":" or value[20] != " ":
+        raise ValueError(f"not a log timestamp: {value}")
+    return _minute(value[:17], value[21:26]) + second
 
 
 def parse_line(line: str) -> Request | None:
@@ -78,13 +86,18 @@ def parse_line(line: str) -> Request | None:
 
 
 def read_lines(sources: Iterable[str]) -> Iterator[str]:
-    """Lines from each file in *sources*; ``.gz`` files are decompressed, ``-`` is stdin."""
+    """Lines from each file in *sources*; gzip is detected by content, ``-`` is stdin."""
     for source in sources:
         if source == "-":
-            yield from io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
+            yield from _decode(sys.stdin.buffer)
             continue
-        with open(source, "rb") as probe:
-            gzipped = probe.read(2) == b"\x1f\x8b"
-        opener = gzip.open if gzipped else open
-        with opener(source, "rt", encoding="utf-8", errors="replace") as handle:
-            yield from handle
+        with open(source, "rb") as raw:
+            yield from _decode(raw)
+
+
+def _decode(raw) -> Iterator[str]:
+    # Peek rather than read, so a pipe or FIFO (`loghunt <(zcat x.gz)`) keeps its first bytes.
+    buffered = raw if hasattr(raw, "peek") else io.BufferedReader(raw)
+    if buffered.peek(2)[:2] == b"\x1f\x8b":
+        buffered = gzip.GzipFile(fileobj=buffered)
+    yield from io.TextIOWrapper(buffered, encoding="utf-8", errors="replace")

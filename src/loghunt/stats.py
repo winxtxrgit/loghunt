@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from urllib.parse import unquote_plus
 
 from .parser import Request
-from .signatures import has_payload, is_login, is_probe
+from .signatures import has_payload, is_login, is_probe, scanner_name
 
 # Distinct requests remembered per IP, for campaign fingerprints. Scripted bots repeat a
 # short list; an IP past the cap is a crawler or a busy proxy and is not fingerprinted.
@@ -15,6 +15,10 @@ from .signatures import has_payload, is_login, is_probe
 PATH_CAP = 64
 PROBE_CAP = 200
 SAMPLE_CAP = 3
+# Distinct User-Agents and login paths counted per IP. An attacker who sends a new
+# User-Agent with every request must not be able to grow memory without limit.
+AGENT_CAP = 50
+LOGIN_PATH_CAP = 20
 
 
 @dataclass(slots=True)
@@ -30,6 +34,8 @@ class IPStats:
     paths_overflow: bool = False
     probes: set[str] = field(default_factory=set)
     login_posts: Counter[str] = field(default_factory=Counter)
+    login_total: int = 0
+    scanner: str | None = None  # first attack tool named in a User-Agent
     payload_hits: int = 0
     payload_samples: list[str] = field(default_factory=list)
     malformed: int = 0
@@ -44,8 +50,12 @@ class IPStats:
         self.requests += 1
         self.per_minute[request.time // 60] += 1
         self.status_classes[request.status // 100] += 1
-        if request.agent is not None:
-            self.agents[request.agent] += 1
+        agent = request.agent
+        if agent is not None:
+            if agent in self.agents or len(self.agents) < AGENT_CAP:
+                self.agents[agent] += 1
+            if self.scanner is None:
+                self.scanner = scanner_name(agent)
 
         if request.method == "-":
             self.malformed += 1
@@ -58,7 +68,9 @@ class IPStats:
         if request.path and len(self.probes) < PROBE_CAP and is_probe(request.path):
             self.probes.add(request.path)
         if request.method == "POST" and is_login(request.path):
-            self.login_posts[request.path] += 1
+            self.login_total += 1
+            if request.path in self.login_posts or len(self.login_posts) < LOGIN_PATH_CAP:
+                self.login_posts[request.path] += 1
         if has_payload(request.target):
             self.payload_hits += 1
             if len(self.payload_samples) < SAMPLE_CAP:

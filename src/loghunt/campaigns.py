@@ -34,9 +34,9 @@ def _network(ip: str) -> str:
 def _group_reason(
     members: list[IPStats], findings: dict[str, list[Finding]], limits: Thresholds
 ) -> str | None:
-    logins = sum(sum(m.login_posts.values()) for m in members)
+    logins = sum(m.login_total for m in members)
     if logins >= limits.login_posts:
-        busiest = max(sum(m.login_posts.values()) for m in members)
+        busiest = max(m.login_total for m in members)
         return f"{logins} login attempts together, no more than {busiest} from any one IP"
     probes = set().union(*(m.probes for m in members))
     if len(probes) >= limits.probes:

@@ -11,7 +11,7 @@ from pathlib import Path
 from . import __version__
 from .hunt import hunt
 from .parser import read_lines
-from .report import terminal, to_blocklist, to_html, to_json, use_color
+from .report import blocklist_ips, terminal, to_blocklist, to_html, to_json, use_color
 from .rules import Thresholds
 
 
@@ -94,7 +94,9 @@ def main(argv: list[str] | None = None) -> int:
             written.append(f"report: {args.report}")
         if args.blocklist:
             _write(args.blocklist, to_blocklist(result))
-            written.append(f"blocklist: {args.blocklist}")
+            left_out = len(result.suspects) - len(blocklist_ips(result))
+            note = f" ({left_out} entries that are not IP addresses left out)" if left_out else ""
+            written.append(f"blocklist: {args.blocklist}{note}")
         if args.json:
             _write(args.json, to_json(result))
             if args.json != "-":

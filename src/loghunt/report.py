@@ -6,6 +6,7 @@ escapes all of it and loads nothing from the network.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
@@ -203,11 +204,29 @@ def to_json(result: Result) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
+def blocklist_ips(result: Result) -> list[str]:
+    """Suspicious IPs that are real addresses, normalised.
+
+    The IP column is whatever the log format put first. With X-Forwarded-For logging the
+    client writes it, so a value such as ``1.2.3.4;include /x`` must never reach a
+    firewall or server config built from this list.
+    """
+    ips = []
+    for suspect in result.suspects:
+        try:
+            ips.append(str(ipaddress.ip_address(suspect.ip)))
+        except ValueError:
+            continue
+    return ips
+
+
 def to_blocklist(result: Result) -> str:
-    return "".join(f"{s.ip}\n" for s in result.suspects)
+    return "".join(f"{ip}\n" for ip in blocklist_ips(result))
 
 
 # --------------------------------------------------------------------------- html
+
+HTML_ROW_CAP = 5000
 
 _CSS = """
 :root{--bg:#f6f7f9;--panel:#fff;--text:#1d2330;--muted:#5d6678;--line:#e2e5eb;
@@ -261,7 +280,7 @@ _CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline
 
 _JS = """
 const q=document.getElementById('filter');
-const rows=[...document.querySelectorAll('#suspects tbody tr')];
+const rows=[...document.querySelectorAll('#suspects tbody tr:not(.more)')];
 const n=document.getElementById('shown');
 q.addEventListener('input',()=>{const t=q.value.trim().toLowerCase();let c=0;
 rows.forEach(r=>{const hit=!t||r.textContent.toLowerCase().includes(t);r.hidden=!hit;if(hit)c++});
@@ -350,7 +369,15 @@ def to_html(result: Result, sources: list[str]) -> str:
     campaigns_html = "".join(_campaign_block(c) for c in result.campaigns) or (
         '<p class="sub">No coordinated groups found.</p>'
     )
-    rows = "".join(_suspect_row(s) for s in result.suspects)
+    shown = min(len(result.suspects), HTML_ROW_CAP)
+    rows = "".join(_suspect_row(s) for s in result.suspects[:HTML_ROW_CAP])
+    if len(result.suspects) > HTML_ROW_CAP:
+        hidden = len(result.suspects) - HTML_ROW_CAP
+        rows += (
+            f'<tr class="more"><td colspan="7" class="sub">{hidden:,} more suspicious IPs '
+            "are left out to keep this file small; --json and --blocklist list all of them."
+            "</td></tr>"
+        )
     limits = result.limits
     names = ", ".join(escape(os.path.basename(s) or s) for s in sources)
     generated = _when(int(datetime.now(timezone.utc).timestamp()))
@@ -375,7 +402,7 @@ def to_html(result: Result, sources: list[str]) -> str:
 
 <h2>Suspicious IPs</h2>
 <div class="tools"><input id="filter" type="search" placeholder="Filter by IP, rule or User-Agent"
-aria-label="Filter suspicious IPs"><span class="sub"><span id="shown">{len(result.suspects)}</span>
+aria-label="Filter suspicious IPs"><span class="sub"><span id="shown">{shown}</span>
 shown</span></div>
 <div class="table-wrap"><table id="suspects"><thead><tr><th>Score</th><th>IP</th>
 <th class="num">Requests</th><th class="num">Peak/min</th><th class="num">4xx</th>

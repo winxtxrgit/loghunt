@@ -40,7 +40,7 @@ nobody else (`tests/test_sample.py` checks exactly that).
 loghunt /var/log/nginx/access.log                     # summary in the terminal
 loghunt access.log access.log.1 access.log.2.gz       # rotated logs, gzip detected by content
 loghunt access.log -o report.html                     # single-file HTML report
-loghunt access.log --blocklist block.txt              # suspicious IPs, one per line
+loghunt access.log --blocklist block.txt              # suspicious IPs, one valid address per line
 loghunt access.log --json - | jq '.suspects[0]'       # machine-readable findings
 zcat old/*.gz | loghunt -                             # read stdin
 loghunt access.log --fail                             # exit 1 if anything is found (cron, CI)
@@ -121,6 +121,8 @@ size of the log. To reproduce: `python samples/generate.py big.log --visitors 60
 - Several people behind one NAT or proxy share an IP. If your site sits behind a load balancer
   or CDN, log the real client IP (nginx `real_ip_header`, apache `mod_remoteip`), or every
   request will look like it came from the proxy.
+- If your log format puts `X-Forwarded-For` in the first column, the client chose that value.
+  The blocklist only ever contains well-formed IP addresses, but check where they came from.
 - A User-Agent is whatever the client says it is. loghunt never trusts one to *clear* an IP,
   only to add a reason.
 

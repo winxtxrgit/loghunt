@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 import gzip
+import io
+import os
+import sys
+import threading
+
+import pytest
 
 from loghunt.parser import parse_line, parse_time, read_lines
 
@@ -69,3 +75,47 @@ def test_read_lines_detects_gzip_by_content(tmp_path):
         "two",
         "three",
     ]
+
+
+def test_impossible_timestamps_are_rejected():
+    template = '192.0.2.1 - - [{}] "GET / HTTP/1.1" 200 1 "-" "x"'
+    for stamp in (
+        "01/Jan/1970:00:00:00 +0000",  # epoch zero from a broken logger
+        "20/Oct/9999:08:00:01 +0000",
+        "20/Oct/2026:25:00:01 +0000",
+        "20/Oct/2026:08:61:01 +0000",
+        "20/Oct/2026:08:00:99 +0000",
+        "20/Oct/2026T08:00:01 +0000",
+    ):
+        assert parse_line(template.format(stamp)) is None, stamp
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs POSIX named pipes")
+def test_pipe_keeps_its_first_bytes(tmp_path):
+    # `loghunt <(zcat access.log.gz)` hands loghunt a pipe; peeking must not eat bytes.
+    fifo = tmp_path / "pipe"
+    os.mkfifo(fifo)
+    lines = ["first line\n", "second line\n"]
+
+    def feed():
+        with open(fifo, "w") as writer:
+            writer.writelines(lines)
+
+    got: list[str] = []
+
+    def drain():
+        got.extend(read_lines([str(fifo)]))
+
+    # Daemon threads with a timeout: a regression here blocks on the pipe instead of failing.
+    threads = [threading.Thread(target=f, daemon=True) for f in (feed, drain)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+    assert got == lines
+
+
+def test_gzip_on_stdin(monkeypatch):
+    packed = gzip.compress(b"one\ntwo\n")
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(packed)))
+    assert [line.strip() for line in read_lines(["-"])] == ["one", "two"]

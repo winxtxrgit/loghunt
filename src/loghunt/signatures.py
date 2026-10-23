@@ -92,6 +92,7 @@ def has_payload(target: str) -> bool:
     return PAYLOAD_RE.search(target.lower()) is not None
 
 
+@lru_cache(maxsize=4096)
 def scanner_name(agent: str) -> str | None:
     match = SCANNER_RE.search(agent)
     return match.group(1).lower() if match else None

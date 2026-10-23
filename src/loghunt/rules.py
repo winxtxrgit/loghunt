@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from .signatures import scanner_name, script_name
+from .signatures import script_name
 from .stats import IPStats
 
 
@@ -35,11 +35,9 @@ def _listing(items: list[str], limit: int = 4) -> str:
 
 
 def scanner_agent(stats: IPStats, limits: Thresholds) -> Finding | None:
-    for agent in stats.agents:
-        name = scanner_name(agent)
-        if name:
-            return Finding("scanner-agent", 60, f"User-Agent names an attack tool: {name}")
-    return None
+    if stats.scanner is None:
+        return None
+    return Finding("scanner-agent", 60, f"User-Agent names an attack tool: {stats.scanner}")
 
 
 def attack_payload(stats: IPStats, limits: Thresholds) -> Finding | None:
@@ -63,7 +61,7 @@ def probe_paths(stats: IPStats, limits: Thresholds) -> Finding | None:
 
 
 def brute_force(stats: IPStats, limits: Thresholds) -> Finding | None:
-    total = sum(stats.login_posts.values())
+    total = stats.login_total
     if total < limits.login_posts:
         return None
     path, count = stats.login_posts.most_common(1)[0]

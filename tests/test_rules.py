@@ -80,3 +80,24 @@ def test_ordinary_query_strings_are_not_payloads():
 
     for target in ("/search?q=rock+and+roll", "/p?id=10&sort=asc", "/docs/a%20b", "/?q=1%2B1"):
         assert not has_payload(target), target
+
+
+def test_rotating_user_agents_stay_bounded_and_scanners_are_still_seen():
+    from loghunt.stats import AGENT_CAP
+
+    lines = [entry("203.0.113.9", "/", second=i, agent=f"Mozilla/5.0 rnd{i}") for i in range(500)]
+    lines.append(entry("203.0.113.9", "/", second=600, agent="Nuclei - Open-source project"))
+    result = hunt(lines)
+    stats = result.stats["203.0.113.9"]
+    assert len(stats.agents) == AGENT_CAP
+    assert "scanner-agent" in rules_for(lines, "203.0.113.9")
+
+
+def test_login_attempts_count_beyond_the_tracked_paths():
+    from loghunt.stats import LOGIN_PATH_CAP
+
+    lines = [entry("192.0.2.30", f"/site{i}/login", method="POST", second=i * 5) for i in range(60)]
+    stats = hunt(lines).stats["192.0.2.30"]
+    assert stats.login_total == 60
+    assert len(stats.login_posts) == LOGIN_PATH_CAP
+    assert "brute-force" in rules_for(lines, "192.0.2.30")

@@ -82,3 +82,23 @@ def test_timeline_accounts_for_every_request(sample):
     assert 0 < len(rows) <= 120
     assert sum(total for _, total, _ in rows) == sample.parsed
     assert sum(flagged for _, _, flagged in rows) == sample.flagged_requests
+
+
+def test_blocklist_keeps_only_real_addresses():
+    # With X-Forwarded-For logging, the client writes the IP column.
+    lines = [
+        entry(ip, "/", agent="sqlmap/1.8")
+        for ip in ("203.0.113.5", "2001:db8::7", "1.2.3.4;include", "-", "evil.example")
+    ]
+    assert to_blocklist(hunt(lines)).splitlines() == ["2001:db8::7", "203.0.113.5"]
+
+
+def test_html_caps_rows_but_says_so(monkeypatch):
+    import loghunt.report as report
+
+    monkeypatch.setattr(report, "HTML_ROW_CAP", 2)
+    lines = [entry(f"203.0.113.{n}", "/", agent="sqlmap/1.8") for n in range(1, 6)]
+    html = report.to_html(hunt(lines), ["x.log"])
+    assert html.count('<tr><td><span class="score') == 2
+    assert "3 more suspicious IPs are left out" in html
+    assert 'id="shown">2<' in html
