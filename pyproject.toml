@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "loghunt"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Hunt bots, scanners and botnets in nginx/apache access logs. Every flag comes with a reason."
 readme = "README.md"
 license = "MIT"
@@ -32,6 +32,9 @@ loghunt = "loghunt.cli:main"
 [project.urls]
 Homepage = "https://github.com/winxtxrgit/loghunt"
 Issues = "https://github.com/winxtxrgit/loghunt/issues"
+
+[tool.hatch.version]
+path = "src/loghunt/__init__.py"
 
 [tool.hatch.build.targets.sdist]
 include = ["src", "tests", "samples", "README.md", "LICENSE"]

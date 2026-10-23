@@ -1,9 +1,10 @@
 # loghunt
 
 [![CI](https://github.com/winxtxrgit/loghunt/actions/workflows/ci.yml/badge.svg)](https://github.com/winxtxrgit/loghunt/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/loghunt?color=0e75b6)](https://pypi.org/project/loghunt/)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-0e75b6)
 ![No dependencies](https://img.shields.io/badge/dependencies-none-2ea44f)
-[![MIT License](https://img.shields.io/badge/license-MIT-0e75b6)](LICENSE)
+[![MIT License](https://img.shields.io/badge/license-MIT-0e75b6)](https://github.com/winxtxrgit/loghunt/blob/main/LICENSE)
 
 **Hunt bots, scanners and botnets in nginx/apache access logs. Every flagged IP comes with the reasons it was flagged.**
 
@@ -12,7 +13,7 @@ secret-file probers, login brute-forcers, floods, and the hard one, **botnets th
 brute-force across many IPs so each one stays under every threshold.**
 
 <p align="center">
-  <img src="docs/terminal.png" alt="loghunt in a terminal: a table of suspicious IPs with a score, request count, peak per minute and the reason each was flagged, followed by a 19-IP campaign" width="820">
+  <img src="https://raw.githubusercontent.com/winxtxrgit/loghunt/main/docs/terminal.png" alt="loghunt in a terminal: a table of suspicious IPs with a score, request count, peak per minute and the reason each was flagged, followed by a 19-IP campaign" width="820">
 </p>
 
 ## Why
@@ -25,7 +26,7 @@ explained**, so you can check it before you block anyone.
 ## Try it in 10 seconds
 
 ```bash
-pipx install git+https://github.com/winxtxrgit/loghunt
+pipx install loghunt          # or: pip install loghunt
 git clone https://github.com/winxtxrgit/loghunt && cd loghunt
 loghunt samples/access.log.gz -o report.html
 ```
@@ -92,7 +93,7 @@ suspicious share highlighted, campaigns with all their member IPs, and a filtera
 suspicious IP with its reasons. Light and dark themes follow your system.
 
 <p align="center">
-  <img src="docs/report.png" alt="The HTML report: summary cards, a traffic-over-time chart with a highlighted flood, a 19-IP campaign, and the table of suspicious IPs" width="820">
+  <img src="https://raw.githubusercontent.com/winxtxrgit/loghunt/main/docs/report.png" alt="The HTML report: summary cards, a traffic-over-time chart with a highlighted flood, a 19-IP campaign, and the table of suspicious IPs" width="820">
 </p>
 
 **Safe to open.** Everything in an access log is written by whoever sent the request, including
@@ -141,4 +142,4 @@ NAT (RFC 5737, RFC 2544, RFC 6598), so no real address is labelled an attacker.
 
 ## License
 
-[MIT](LICENSE) © Thanut Jongteerathanachote
+[MIT](https://github.com/winxtxrgit/loghunt/blob/main/LICENSE) © Thanut Jongteerathanachote
