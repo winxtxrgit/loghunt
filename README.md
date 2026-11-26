@@ -1,9 +1,10 @@
 # loghunt
 
 [![CI](https://github.com/winxtxrgit/loghunt/actions/workflows/ci.yml/badge.svg)](https://github.com/winxtxrgit/loghunt/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/loghunt?color=0e75b6)](https://pypi.org/project/loghunt/)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-0e75b6)
 ![No dependencies](https://img.shields.io/badge/dependencies-none-2ea44f)
-[![MIT License](https://img.shields.io/badge/license-MIT-0e75b6)](LICENSE)
+[![MIT License](https://img.shields.io/badge/license-MIT-0e75b6)](https://github.com/winxtxrgit/loghunt/blob/main/LICENSE)
 
 **Hunt bots, scanners and botnets in nginx/apache access logs. Every flagged IP comes with the reasons it was flagged.**
 
@@ -12,7 +13,7 @@ secret-file probers, login brute-forcers, floods, and the hard one, **botnets th
 brute-force across many IPs so each one stays under every threshold.**
 
 <p align="center">
-  <img src="docs/terminal.png" alt="loghunt in a terminal: a table of suspicious IPs with a score, request count, peak per minute and the reason each was flagged, followed by a 19-IP campaign" width="820">
+  <img src="https://raw.githubusercontent.com/winxtxrgit/loghunt/main/docs/terminal.png" alt="loghunt in a terminal: a table of suspicious IPs with a score, request count, peak per minute and the reason each was flagged, followed by a 19-IP campaign" width="820">
 </p>
 
 ## Why
@@ -25,7 +26,7 @@ explained**, so you can check it before you block anyone.
 ## Try it in 10 seconds
 
 ```bash
-pipx install git+https://github.com/winxtxrgit/loghunt
+pipx install loghunt          # or: pip install loghunt
 git clone https://github.com/winxtxrgit/loghunt && cd loghunt
 loghunt samples/access.log.gz -o report.html
 ```
@@ -41,11 +42,19 @@ loghunt /var/log/nginx/access.log                     # summary in the terminal
 loghunt access.log access.log.1 access.log.2.gz       # rotated logs, gzip detected by content
 loghunt access.log -o report.html                     # single-file HTML report
 loghunt access.log --blocklist block.txt              # suspicious IPs, one valid address per line
+loghunt access.log --blocklist deny.conf --blocklist-format nginx   # or apache, ipset, nftables
 loghunt access.log --json - | jq '.suspects[0]'       # machine-readable findings
 zcat old/*.gz | loghunt -                             # read stdin
 loghunt access.log --fail                             # exit 1 if anything is found (cron, CI)
 loghunt access.log --min-score 70                     # only the worst offenders
+loghunt access.log --allow 198.51.100.0/24             # never flag your own monitors (or @allow.txt)
+loghunt access.log --since "2026-10-20 08:00" --until "2026-10-20 09:00"   # one incident window
 ```
+
+`--since` is inclusive and `--until` is exclusive, so `--since 2026-10-20 --until 2026-10-21` is
+the whole of 20 October. Times are UTC, like every loghunt output, unless you add an offset
+(`2026-10-20T15:00+07:00`). Counts are per window: 30 login attempts split 15/15 across the
+edge of the window are only 15 inside it.
 
 Works with the nginx and apache **combined** format (the default on both) and the **common**
 format. The common format has no User-Agent, so the two User-Agent rules and campaign grouping
@@ -66,6 +75,15 @@ weak signal alone is never enough.
 | `error-ratio` | 25 | Half or more of 20+ requests ended in a 4xx |
 | `script-agent` | 15 | No User-Agent, or an HTTP library (`python-requests`, `Go-http-client`, `curl`, …) |
 | `campaign` | 40 | Member of a campaign (below) |
+
+The defaults suit a small-to-medium site. Change them with `--burst`, `--flood`,
+`--login-posts` and `--probes`; campaigns use the same login and probe numbers for the group
+total. The HTML report and the JSON output both record the thresholds a run used.
+
+```bash
+loghunt access.log --burst 300 --flood 1500        # a busy shop or an API
+loghunt access.log --login-posts 50                # WordPress with many real logins
+```
 
 ### Campaigns: catching low-and-slow botnets
 
@@ -92,7 +110,7 @@ suspicious share highlighted, campaigns with all their member IPs, and a filtera
 suspicious IP with its reasons. Light and dark themes follow your system.
 
 <p align="center">
-  <img src="docs/report.png" alt="The HTML report: summary cards, a traffic-over-time chart with a highlighted flood, a 19-IP campaign, and the table of suspicious IPs" width="820">
+  <img src="https://raw.githubusercontent.com/winxtxrgit/loghunt/main/docs/report.png" alt="The HTML report: summary cards, a traffic-over-time chart with a highlighted flood, a 19-IP campaign, and the table of suspicious IPs" width="820">
 </p>
 
 **Safe to open.** Everything in an access log is written by whoever sent the request, including
@@ -114,10 +132,31 @@ One pass over the log, no dependencies outside the Python standard library.
 Measured on an Apple M2 with Python 3.12. Memory grows with the number of distinct IPs, not the
 size of the log. To reproduce: `python samples/generate.py big.log --visitors 60000`.
 
+## Loading the blocklist
+
+`--blocklist-format` writes a file the server or firewall loads as it is. Every format contains
+only well-formed IP addresses, and an IPv4 client logged as `::ffff:203.0.113.9` is written as
+`203.0.113.9`.
+
+| Format | Load it with |
+| :--- | :--- |
+| `plain` (default) | anything that reads one IP per line |
+| `nginx` | `include /etc/nginx/loghunt-deny.conf;` in `http`, `server` or `location`, then `nginx -s reload` |
+| `apache` | `Include` it inside a `<Directory>` or `<Location>` (Apache 2.4 `Require` rules) |
+| `ipset` | `ipset restore < file`, then once: `iptables -I INPUT -m set --match-set loghunt4 src -j DROP` (and `ip6tables` with `loghunt6`) |
+| `nftables` | `nft -f file`: a `loghunt` table that drops both sets |
+
+The `ipset` and `nftables` files replace their previous contents when you load them again, so a
+cron job that reruns loghunt never piles up stale entries.
+
 ## Before you block anyone
 
+- Put your own uptime checks, office NAT and scanners on the allowlist (`--allow IP`, `--allow
+  CIDR` or `--allow @file` with one entry per line). They still count toward traffic totals,
+  but are never flagged, grouped into a campaign or written to the blocklist.
 - Thresholds suit a typical small-to-medium site. A WordPress site sees real `POST
-  /wp-login.php` traffic from its own users, so read the reasons before blocking.
+  /wp-login.php` traffic from its own users, so read the reasons before blocking, or raise
+  `--login-posts`.
 - Several people behind one NAT or proxy share an IP. If your site sits behind a load balancer
   or CDN, log the real client IP (nginx `real_ip_header`, apache `mod_remoteip`), or every
   request will look like it came from the proxy.
@@ -141,4 +180,4 @@ NAT (RFC 5737, RFC 2544, RFC 6598), so no real address is labelled an attacker.
 
 ## License
 
-[MIT](LICENSE) © Thanut Jongteerathanachote
+[MIT](https://github.com/winxtxrgit/loghunt/blob/main/LICENSE) © Thanut Jongteerathanachote
