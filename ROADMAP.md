@@ -20,8 +20,9 @@ Things every operator needs before trusting the output enough to block anyone.
 - [x] Threshold flags (`--login-posts`, `--burst`, `--flood`, `--probes`): a busy shop and a
       personal blog need different numbers.
 - [x] `--since` / `--until`: look at one incident window inside a long log.
-- [ ] `--blocklist-format plain|nginx|apache|ipset|nftables`: write something you can load
-      directly instead of hand-converting a list.
+- [x] `--blocklist-format plain|nginx|apache|ipset|nftables`: write something you can load
+      directly instead of hand-converting a list. (fail2ban was dropped: it has no file to
+      load, only commands to run, and nftables covers current Linux firewalls.)
 
 ## 0.3.0: read more logs
 

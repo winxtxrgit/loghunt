@@ -42,6 +42,7 @@ loghunt /var/log/nginx/access.log                     # summary in the terminal
 loghunt access.log access.log.1 access.log.2.gz       # rotated logs, gzip detected by content
 loghunt access.log -o report.html                     # single-file HTML report
 loghunt access.log --blocklist block.txt              # suspicious IPs, one valid address per line
+loghunt access.log --blocklist deny.conf --blocklist-format nginx   # or apache, ipset, nftables
 loghunt access.log --json - | jq '.suspects[0]'       # machine-readable findings
 zcat old/*.gz | loghunt -                             # read stdin
 loghunt access.log --fail                             # exit 1 if anything is found (cron, CI)
@@ -130,6 +131,23 @@ One pass over the log, no dependencies outside the Python standard library.
 
 Measured on an Apple M2 with Python 3.12. Memory grows with the number of distinct IPs, not the
 size of the log. To reproduce: `python samples/generate.py big.log --visitors 60000`.
+
+## Loading the blocklist
+
+`--blocklist-format` writes a file the server or firewall loads as it is. Every format contains
+only well-formed IP addresses, and an IPv4 client logged as `::ffff:203.0.113.9` is written as
+`203.0.113.9`.
+
+| Format | Load it with |
+| :--- | :--- |
+| `plain` (default) | anything that reads one IP per line |
+| `nginx` | `include /etc/nginx/loghunt-deny.conf;` in `http`, `server` or `location`, then `nginx -s reload` |
+| `apache` | `Include` it inside a `<Directory>` or `<Location>` (Apache 2.4 `Require` rules) |
+| `ipset` | `ipset restore < file`, then once: `iptables -I INPUT -m set --match-set loghunt4 src -j DROP` (and `ip6tables` with `loghunt6`) |
+| `nftables` | `nft -f file`: a `loghunt` table that drops both sets |
+
+The `ipset` and `nftables` files replace their previous contents when you load them again, so a
+cron job that reruns loghunt never piles up stale entries.
 
 ## Before you block anyone
 

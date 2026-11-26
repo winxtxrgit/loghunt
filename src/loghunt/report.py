@@ -249,14 +249,55 @@ def blocklist_ips(result: Result) -> list[str]:
     ips = []
     for suspect in result.suspects:
         try:
-            ips.append(str(ipaddress.ip_address(suspect.ip)))
+            address = ipaddress.ip_address(suspect.ip)
         except ValueError:
             continue
+        # ::ffff:203.0.113.9 is an IPv4 client on a dual-stack socket; firewalls see the IPv4.
+        address = getattr(address, "ipv4_mapped", None) or address
+        if str(address) not in ips:
+            ips.append(str(address))
     return ips
 
 
-def to_blocklist(result: Result) -> str:
-    return "".join(f"{ip}\n" for ip in blocklist_ips(result))
+BLOCKLIST_FORMATS = ("plain", "nginx", "apache", "ipset", "nftables")
+
+
+def to_blocklist(result: Result, fmt: str = "plain") -> str:
+    """The blocklist as *fmt*: a file the named server or firewall loads as it is."""
+    ips = blocklist_ips(result)
+    v4 = [ip for ip in ips if ":" not in ip]
+    v6 = [ip for ip in ips if ":" in ip]
+    header = f"# loghunt {__version__}, suspicious IPs: {len(ips)}\n"
+    if fmt == "plain":
+        return "".join(f"{ip}\n" for ip in ips)
+    if fmt == "nginx":
+        # include /etc/nginx/loghunt-deny.conf;  inside http, server or location
+        return header + "".join(f"deny {ip};\n" for ip in ips)
+    if fmt == "apache":
+        # Include it where a Require block is allowed (Apache 2.4, <Directory> or <Location>).
+        lines = "".join(f"    Require not ip {ip}\n" for ip in ips)
+        return f"{header}<RequireAll>\n    Require all granted\n{lines}</RequireAll>\n"
+    if fmt == "ipset":
+        # ipset restore < file; flush makes a reload replace the old list instead of adding.
+        out = []
+        for name, family, members in (("loghunt4", "inet", v4), ("loghunt6", "inet6", v6)):
+            out.append(f"create {name} hash:ip family {family} -exist")
+            out.append(f"flush {name}")
+            out.extend(f"add {name} {ip} -exist" for ip in members)
+        return "\n".join(out) + "\n"
+    if fmt == "nftables":
+        # nft -f file; the first two lines make a reload replace the table, not merge into it.
+        sets = []
+        for name, kind, members in (("blocked4", "ipv4_addr", v4), ("blocked6", "ipv6_addr", v6)):
+            elements = f"\n        elements = {{ {', '.join(members)} }}" if members else ""
+            sets.append(f"    set {name} {{\n        type {kind}{elements}\n    }}\n")
+        return (
+            f"{header}table inet loghunt {{}}\ndelete table inet loghunt\n"
+            "table inet loghunt {\n" + "".join(sets) + "    chain input {\n"
+            "        type filter hook input priority -10; policy accept;\n"
+            "        ip saddr @blocked4 drop\n        ip6 saddr @blocked6 drop\n    }\n}\n"
+        )
+    raise ValueError(f"unknown blocklist format: {fmt}")
 
 
 # --------------------------------------------------------------------------- html

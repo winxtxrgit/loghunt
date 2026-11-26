@@ -14,7 +14,14 @@ from pathlib import Path
 from . import __version__
 from .hunt import Network, hunt
 from .parser import read_lines
-from .report import blocklist_ips, terminal, to_blocklist, to_html, to_json, use_color
+from .report import (
+    BLOCKLIST_FORMATS,
+    terminal,
+    to_blocklist,
+    to_html,
+    to_json,
+    use_color,
+)
 from .rules import Thresholds
 
 
@@ -113,6 +120,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--blocklist", metavar="FILE", help="write the suspicious IPs to FILE, one per line"
     )
     parser.add_argument(
+        "--blocklist-format",
+        choices=BLOCKLIST_FORMATS,
+        metavar="FORMAT",
+        help="plain (default, one IP per line), nginx (deny rules), apache (Require not ip), "
+        "ipset (for ipset restore) or nftables (for nft -f)",
+    )
+    parser.add_argument(
         "--allow",
         type=_allow,
         action="append",
@@ -168,6 +182,14 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _is_address(text: str) -> bool:
+    try:
+        ipaddress.ip_address(text)
+    except ValueError:
+        return False
+    return True
+
+
 def _write(target: str, text: str) -> None:
     if target == "-":
         sys.stdout.write(text if text.endswith("\n") else text + "\n")
@@ -181,6 +203,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.flood < args.burst:
         # The flood check runs first, so a lower flood would hide every burst.
         parser.error(f"--flood ({args.flood}) must be at least --burst ({args.burst})")
+    if args.blocklist_format and not args.blocklist:
+        parser.error("--blocklist-format needs --blocklist FILE")
     if args.since is not None and args.until is not None and args.since >= args.until:
         parser.error("--since must be earlier than --until")
     limits = Thresholds(
@@ -212,8 +236,8 @@ def main(argv: list[str] | None = None) -> int:
             _write(args.report, to_html(result, args.logs))
             written.append(f"report: {args.report}")
         if args.blocklist:
-            _write(args.blocklist, to_blocklist(result))
-            left_out = len(result.suspects) - len(blocklist_ips(result))
+            _write(args.blocklist, to_blocklist(result, args.blocklist_format or "plain"))
+            left_out = sum(1 for s in result.suspects if not _is_address(s.ip))
             note = f" ({left_out} entries that are not IP addresses left out)" if left_out else ""
             written.append(f"blocklist: {args.blocklist}{note}")
         if args.json:
