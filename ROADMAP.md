@@ -1,17 +1,17 @@
 # Roadmap
 
-loghunt 0.1.0 finds attackers in a log you already have. The next releases make it fit a real
+loghunt finds attackers in a log you already have. The next releases make it fit a real
 server (your own monitoring, your own log format, your own firewall), then let it watch a log as
 it grows. The rule stays the same in every release: **rules decide, and every decision is
 explained.**
 
-## 0.1.0: ship it
+## 0.2.0: fit your server, and the first PyPI release
 
-- [ ] Push the release workflow (`dc3c206`) to `main`
+0.1.0 was never published, so 0.2.0 is the first version on PyPI.
+
+- [x] Release workflow: a published GitHub release builds, checks and uploads to PyPI
 - [ ] Add loghunt as a Trusted Publisher on PyPI (environment `pypi`, workflow `release.yml`)
-- [ ] Publish GitHub release `v0.1.0`, which uploads to PyPI
-
-## 0.2.0: fit your server
+- [ ] Publish GitHub release `v0.2.0`, which uploads to PyPI
 
 Things every operator needs before trusting the output enough to block anyone.
 
