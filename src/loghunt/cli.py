@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import os
+import re
 import sys
 import zlib
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import __version__
@@ -54,6 +56,45 @@ def _allow(text: str) -> list[Network]:
     return networks
 
 
+_MOMENT = re.compile(
+    r"(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?"
+    r"\s*(Z|[+-]\d{2}:?\d{2})?",
+    re.IGNORECASE,
+)
+
+
+def _moment(text: str) -> int:
+    """``2026-10-20``, ``2026-10-20 08:30``, ``2026-10-20T08:30:15+07:00`` as Unix seconds.
+
+    Without an offset the time is UTC, the zone every loghunt output uses.
+    """
+    match = _MOMENT.fullmatch(text.strip())
+    if match is None:
+        raise argparse.ArgumentTypeError(
+            f"not a date or time: {text!r} (use 2026-10-20, 2026-10-20 08:30 "
+            "or 2026-10-20T08:30+07:00)"
+        )
+    year, month, day, hour, minute, second, zone = match.groups()
+    offset = timezone.utc
+    if zone and zone.upper() != "Z":
+        digits = zone[1:].replace(":", "")
+        delta = timedelta(hours=int(digits[:2]), minutes=int(digits[2:]))
+        offset = timezone(-delta if zone[0] == "-" else delta)
+    try:
+        moment = datetime(
+            int(year),
+            int(month),
+            int(day),
+            int(hour or 0),
+            int(minute or 0),
+            int(second or 0),
+            tzinfo=offset,
+        )
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(f"not a valid time: {text!r} ({error})") from None
+    return int(moment.timestamp())
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="loghunt",
@@ -85,6 +126,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=Thresholds.min_score,
         metavar="N",
         help="report IPs scoring at least N, 0-100 (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--since",
+        type=_moment,
+        metavar="TIME",
+        help="only analyse requests at or after TIME, e.g. 2026-10-20 08:30 (UTC unless an "
+        "offset such as +07:00 is given)",
+    )
+    parser.add_argument(
+        "--until", type=_moment, metavar="TIME", help="only analyse requests before TIME"
     )
     rules = parser.add_argument_group(
         "thresholds", "raise them for a busy site, lower them for a quiet one"
@@ -130,6 +181,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.flood < args.burst:
         # The flood check runs first, so a lower flood would hide every burst.
         parser.error(f"--flood ({args.flood}) must be at least --burst ({args.burst})")
+    if args.since is not None and args.until is not None and args.since >= args.until:
+        parser.error("--since must be earlier than --until")
     limits = Thresholds(
         burst=args.burst,
         flood=args.flood,
@@ -143,7 +196,7 @@ def main(argv: list[str] | None = None) -> int:
             stream.reconfigure(errors="replace")
     try:
         allow = [network for group in args.allow for network in group]
-        result = hunt(read_lines(args.logs), limits, allow)
+        result = hunt(read_lines(args.logs), limits, allow, args.since, args.until)
     except (OSError, EOFError, zlib.error) as error:  # EOFError: a truncated .gz
         print(f"loghunt: cannot read the log: {error}", file=sys.stderr)
         return 2

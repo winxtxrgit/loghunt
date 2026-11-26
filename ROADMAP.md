@@ -19,7 +19,7 @@ Things every operator needs before trusting the output enough to block anyone.
       your own scanners). They still count toward traffic totals.
 - [x] Threshold flags (`--login-posts`, `--burst`, `--flood`, `--probes`): a busy shop and a
       personal blog need different numbers.
-- [ ] `--since` / `--until`: look at one incident window inside a long log.
+- [x] `--since` / `--until`: look at one incident window inside a long log.
 - [ ] `--blocklist-format plain|nginx|apache|ipset|nftables`: write something you can load
       directly instead of hand-converting a list.
 

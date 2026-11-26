@@ -47,7 +47,13 @@ zcat old/*.gz | loghunt -                             # read stdin
 loghunt access.log --fail                             # exit 1 if anything is found (cron, CI)
 loghunt access.log --min-score 70                     # only the worst offenders
 loghunt access.log --allow 198.51.100.0/24             # never flag your own monitors (or @allow.txt)
+loghunt access.log --since "2026-10-20 08:00" --until "2026-10-20 09:00"   # one incident window
 ```
+
+`--since` is inclusive and `--until` is exclusive, so `--since 2026-10-20 --until 2026-10-21` is
+the whole of 20 October. Times are UTC, like every loghunt output, unless you add an offset
+(`2026-10-20T15:00+07:00`). Counts are per window: 30 login attempts split 15/15 across the
+edge of the window are only 15 inside it.
 
 Works with the nginx and apache **combined** format (the default on both) and the **common**
 format. The common format has no User-Agent, so the two User-Agent rules and campaign grouping

@@ -43,10 +43,14 @@ class Result:
     campaigns: list[Campaign]
     limits: Thresholds = field(default_factory=Thresholds)
     allowed: int = 0  # IPs on the allowlist, never checked
+    since: int | None = None  # the --since / --until window, Unix seconds
+    until: int | None = None
+    outside: int = 0  # requests left out because they fall outside the window
 
     @property
     def parsed(self) -> int:
-        return self.lines - self.skipped
+        """Requests analysed: access log entries inside the window."""
+        return self.lines - self.skipped - self.outside
 
     @property
     def start(self) -> int | None:
@@ -91,12 +95,20 @@ def is_allowed(ip: str, allow: Sequence[Network]) -> bool:
 
 
 def hunt(
-    lines: Iterable[str], limits: Thresholds | None = None, allow: Sequence[Network] = ()
+    lines: Iterable[str],
+    limits: Thresholds | None = None,
+    allow: Sequence[Network] = (),
+    since: int | None = None,
+    until: int | None = None,
 ) -> Result:
-    """Analyse *lines*. IPs in *allow* still count toward traffic but are never flagged."""
+    """Analyse *lines*.
+
+    IPs in *allow* still count toward traffic but are never flagged. Only requests at or
+    after *since* and before *until* (Unix seconds) are analysed.
+    """
     limits = limits or Thresholds()
     stats: dict[str, IPStats] = {}
-    count = skipped = 0
+    count = skipped = outside = 0
     for line in lines:
         request = parse_line(line)
         if request is None:
@@ -105,6 +117,11 @@ def hunt(
                 skipped += 1
             continue
         count += 1
+        if (since is not None and request.time < since) or (
+            until is not None and request.time >= until
+        ):
+            outside += 1
+            continue
         entry = stats.get(request.ip)
         if entry is None:
             entry = stats[request.ip] = IPStats(request.ip)
@@ -122,4 +139,6 @@ def hunt(
     suspects = [s for s in suspects if s.score >= limits.min_score]
     suspects.sort(key=lambda s: (-s.score, -s.stats.requests, s.ip))
     allowed = len(stats) - len(checked)
-    return Result(count, skipped, stats, suspects, campaigns, limits, allowed)
+    return Result(
+        count, skipped, stats, suspects, campaigns, limits, allowed, since, until, outside
+    )
