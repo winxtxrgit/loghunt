@@ -6,6 +6,7 @@ escapes all of it and loads nothing from the network.
 
 from __future__ import annotations
 
+import dataclasses
 import ipaddress
 import json
 import os
@@ -191,6 +192,7 @@ def to_json(result: Result) -> str:
         "lines": result.lines,
         "skipped": result.skipped,
         "allowed": result.allowed,
+        "thresholds": dataclasses.asdict(result.limits),
         "ips": len(result.stats),
         "start": _when(result.start, "%Y-%m-%dT%H:%M:%SZ"),
         "end": _when(result.end, "%Y-%m-%dT%H:%M:%SZ"),

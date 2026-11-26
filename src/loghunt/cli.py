@@ -86,6 +86,23 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help="report IPs scoring at least N, 0-100 (default: %(default)s)",
     )
+    rules = parser.add_argument_group(
+        "thresholds", "raise them for a busy site, lower them for a quiet one"
+    )
+    for flag, name, high, what in (
+        ("--burst", "burst", 1_000_000, "requests in one minute for `burst`"),
+        ("--flood", "flood", 1_000_000, "requests in one minute for `flood`"),
+        ("--login-posts", "login_posts", 1_000_000, "login POSTs for `brute-force`"),
+        ("--probes", "probes", 1_000, "distinct attacker-only paths for `probe-paths`"),
+    ):
+        rules.add_argument(
+            flag,
+            dest=name,
+            type=_bounded(1, high),
+            default=getattr(Thresholds, name),
+            metavar="N",
+            help=f"{what} (default: %(default)s)",
+        )
     parser.add_argument(
         "--top",
         type=_bounded(0, 1_000_000),
@@ -108,14 +125,25 @@ def _write(target: str, text: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.flood < args.burst:
+        # The flood check runs first, so a lower flood would hide every burst.
+        parser.error(f"--flood ({args.flood}) must be at least --burst ({args.burst})")
+    limits = Thresholds(
+        burst=args.burst,
+        flood=args.flood,
+        login_posts=args.login_posts,
+        probes=args.probes,
+        min_score=args.min_score,
+    )
     # Log lines carry arbitrary text; never crash on a console that cannot show it.
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="replace")
     try:
         allow = [network for group in args.allow for network in group]
-        result = hunt(read_lines(args.logs), Thresholds(min_score=args.min_score), allow)
+        result = hunt(read_lines(args.logs), limits, allow)
     except (OSError, EOFError, zlib.error) as error:  # EOFError: a truncated .gz
         print(f"loghunt: cannot read the log: {error}", file=sys.stderr)
         return 2

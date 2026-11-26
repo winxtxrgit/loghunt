@@ -69,6 +69,15 @@ weak signal alone is never enough.
 | `script-agent` | 15 | No User-Agent, or an HTTP library (`python-requests`, `Go-http-client`, `curl`, …) |
 | `campaign` | 40 | Member of a campaign (below) |
 
+The defaults suit a small-to-medium site. Change them with `--burst`, `--flood`,
+`--login-posts` and `--probes`; campaigns use the same login and probe numbers for the group
+total. The HTML report and the JSON output both record the thresholds a run used.
+
+```bash
+loghunt access.log --burst 300 --flood 1500        # a busy shop or an API
+loghunt access.log --login-posts 50                # WordPress with many real logins
+```
+
 ### Campaigns: catching low-and-slow botnets
 
 Per-IP rules miss an attacker who rents 19 machines and sends eight login attempts from each.
@@ -122,7 +131,8 @@ size of the log. To reproduce: `python samples/generate.py big.log --visitors 60
   CIDR` or `--allow @file` with one entry per line). They still count toward traffic totals,
   but are never flagged, grouped into a campaign or written to the blocklist.
 - Thresholds suit a typical small-to-medium site. A WordPress site sees real `POST
-  /wp-login.php` traffic from its own users, so read the reasons before blocking.
+  /wp-login.php` traffic from its own users, so read the reasons before blocking, or raise
+  `--login-posts`.
 - Several people behind one NAT or proxy share an IP. If your site sits behind a load balancer
   or CDN, log the real client IP (nginx `real_ip_header`, apache `mod_remoteip`), or every
   request will look like it came from the proxy.

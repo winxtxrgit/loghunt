@@ -17,7 +17,7 @@ Things every operator needs before trusting the output enough to block anyone.
 
 - [x] `--allow IP|CIDR|@FILE`: IPs that are never reported or blocked (uptime checks, office NAT,
       your own scanners). They still count toward traffic totals.
-- [ ] Threshold flags (`--login-posts`, `--burst`, `--flood`, `--probes`): a busy shop and a
+- [x] Threshold flags (`--login-posts`, `--burst`, `--flood`, `--probes`): a busy shop and a
       personal blog need different numbers.
 - [ ] `--since` / `--until`: look at one incident window inside a long log.
 - [ ] `--blocklist-format plain|nginx|apache|ipset|nftables`: write something you can load
