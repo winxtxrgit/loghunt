@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import ipaddress
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
 from .campaigns import Campaign, campaign_finding, find_campaigns
 from .parser import parse_line
 from .rules import Finding, Thresholds, evaluate
 from .stats import IPStats
+
+Network = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 
 @dataclass
@@ -39,6 +42,7 @@ class Result:
     suspects: list[Suspect]
     campaigns: list[Campaign]
     limits: Thresholds = field(default_factory=Thresholds)
+    allowed: int = 0  # IPs on the allowlist, never checked
 
     @property
     def parsed(self) -> int:
@@ -75,7 +79,21 @@ class Result:
         return [((first + i * width) * 60, total[i], flagged[i]) for i in range(size)]
 
 
-def hunt(lines: Iterable[str], limits: Thresholds | None = None) -> Result:
+def is_allowed(ip: str, allow: Sequence[Network]) -> bool:
+    """Whether *ip* falls in one of the *allow* networks. A value that is not an IP never does."""
+    try:
+        address = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    # nginx on a dual-stack socket can log an IPv4 client as ::ffff:203.0.113.9.
+    mapped = getattr(address, "ipv4_mapped", None)
+    return any(address in network or (mapped and mapped in network) for network in allow)
+
+
+def hunt(
+    lines: Iterable[str], limits: Thresholds | None = None, allow: Sequence[Network] = ()
+) -> Result:
+    """Analyse *lines*. IPs in *allow* still count toward traffic but are never flagged."""
     limits = limits or Thresholds()
     stats: dict[str, IPStats] = {}
     count = skipped = 0
@@ -92,8 +110,10 @@ def hunt(lines: Iterable[str], limits: Thresholds | None = None) -> Result:
             entry = stats[request.ip] = IPStats(request.ip)
         entry.add(request)
 
-    findings = {ip: evaluate(entry, limits) for ip, entry in stats.items()}
-    campaigns = find_campaigns(stats, findings, limits)
+    # Allowed IPs stay out of campaigns too, so a group of your own monitors is never one.
+    checked = {ip: e for ip, e in stats.items() if not allow or not is_allowed(ip, allow)}
+    findings = {ip: evaluate(entry, limits) for ip, entry in checked.items()}
+    campaigns = find_campaigns(checked, findings, limits)
     for campaign in campaigns:
         for ip in campaign.ips:
             findings[ip].append(campaign_finding(campaign))
@@ -101,4 +121,5 @@ def hunt(lines: Iterable[str], limits: Thresholds | None = None) -> Result:
     suspects = [Suspect(stats[ip], found) for ip, found in findings.items() if found]
     suspects = [s for s in suspects if s.score >= limits.min_score]
     suspects.sort(key=lambda s: (-s.score, -s.stats.requests, s.ip))
-    return Result(count, skipped, stats, suspects, campaigns, limits)
+    allowed = len(stats) - len(checked)
+    return Result(count, skipped, stats, suspects, campaigns, limits, allowed)

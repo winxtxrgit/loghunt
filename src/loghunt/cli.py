@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import os
 import sys
 import zlib
 from pathlib import Path
 
 from . import __version__
-from .hunt import hunt
+from .hunt import Network, hunt
 from .parser import read_lines
 from .report import blocklist_ips, terminal, to_blocklist, to_html, to_json, use_color
 from .rules import Thresholds
@@ -23,6 +24,34 @@ def _bounded(low: int, high: int):
         return value
 
     return parse
+
+
+def _network(text: str) -> Network:
+    try:
+        return ipaddress.ip_network(text, strict=False)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not an IP address or CIDR range: {text!r}") from None
+
+
+def _allow(text: str) -> list[Network]:
+    """``--allow 203.0.113.0/24`` or ``--allow @file``, one entry per line, # for comments."""
+    if not text.startswith("@"):
+        return [_network(text)]
+    name = text[1:]
+    try:
+        content = Path(name).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise argparse.ArgumentTypeError(f"cannot read {name}: {error}") from None
+    networks = []
+    for number, line in enumerate(content.splitlines(), start=1):
+        entry = line.split("#", 1)[0].strip()
+        if not entry:
+            continue
+        try:
+            networks.append(_network(entry))
+        except argparse.ArgumentTypeError as error:
+            raise argparse.ArgumentTypeError(f"{name} line {number}: {error}") from None
+    return networks
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -41,6 +70,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--json", metavar="FILE", help="write the findings as JSON (- for stdout)")
     parser.add_argument(
         "--blocklist", metavar="FILE", help="write the suspicious IPs to FILE, one per line"
+    )
+    parser.add_argument(
+        "--allow",
+        type=_allow,
+        action="append",
+        default=[],
+        metavar="IP|CIDR|@FILE",
+        help="never flag these IPs, e.g. your uptime checks (repeatable; @FILE reads one per line)",
     )
     parser.add_argument(
         "--min-score",
@@ -77,7 +114,8 @@ def main(argv: list[str] | None = None) -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="replace")
     try:
-        result = hunt(read_lines(args.logs), Thresholds(min_score=args.min_score))
+        allow = [network for group in args.allow for network in group]
+        result = hunt(read_lines(args.logs), Thresholds(min_score=args.min_score), allow)
     except (OSError, EOFError, zlib.error) as error:  # EOFError: a truncated .gz
         print(f"loghunt: cannot read the log: {error}", file=sys.stderr)
         return 2

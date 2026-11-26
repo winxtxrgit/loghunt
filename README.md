@@ -46,6 +46,7 @@ loghunt access.log --json - | jq '.suspects[0]'       # machine-readable finding
 zcat old/*.gz | loghunt -                             # read stdin
 loghunt access.log --fail                             # exit 1 if anything is found (cron, CI)
 loghunt access.log --min-score 70                     # only the worst offenders
+loghunt access.log --allow 198.51.100.0/24             # never flag your own monitors (or @allow.txt)
 ```
 
 Works with the nginx and apache **combined** format (the default on both) and the **common**
@@ -117,6 +118,9 @@ size of the log. To reproduce: `python samples/generate.py big.log --visitors 60
 
 ## Before you block anyone
 
+- Put your own uptime checks, office NAT and scanners on the allowlist (`--allow IP`, `--allow
+  CIDR` or `--allow @file` with one entry per line). They still count toward traffic totals,
+  but are never flagged, grouped into a campaign or written to the blocklist.
 - Thresholds suit a typical small-to-medium site. A WordPress site sees real `POST
   /wp-login.php` traffic from its own users, so read the reasons before blocking.
 - Several people behind one NAT or proxy share an IP. If your site sits behind a load balancer
