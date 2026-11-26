@@ -73,7 +73,7 @@ def test_only_real_addresses_reach_any_format(fmt):
 def test_cli_blocklist_format(tmp_path):
     target = tmp_path / "deny.conf"
     assert main([str(SAMPLE), "--blocklist", str(target), "--blocklist-format", "nginx"]) == 0
-    assert "deny 203.0.113.66;" in target.read_text().splitlines()
+    assert "deny 203.0.113.66;" in target.read_text(encoding="utf-8").splitlines()
 
 
 @pytest.mark.parametrize(
@@ -98,5 +98,5 @@ def test_cli_does_not_count_a_merged_mapped_ip_as_left_out(tmp_path, capsys):
     log.write_text("\n".join(lines) + "\n")
     target = tmp_path / "b.txt"
     assert main([str(log), "--blocklist", str(target)]) == 0
-    assert target.read_text() == "203.0.113.5\n"
+    assert target.read_text(encoding="utf-8") == "203.0.113.5\n"
     assert "left out" not in capsys.readouterr().out

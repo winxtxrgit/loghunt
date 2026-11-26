@@ -61,10 +61,10 @@ def test_cli_allow_keeps_ip_out_of_every_output(tmp_path, capsys):
     blocklist, data = tmp_path / "b.txt", tmp_path / "f.json"
     args = [str(SAMPLE), "--blocklist", str(blocklist), "--json", str(data)]
     assert main(args) == 0
-    assert "203.0.113.66" in blocklist.read_text().splitlines()
+    assert "203.0.113.66" in blocklist.read_text(encoding="utf-8").splitlines()
     assert main([*args, "--allow", "203.0.113.66"]) == 0
-    assert "203.0.113.66" not in blocklist.read_text()
-    payload = json.loads(data.read_text())
+    assert "203.0.113.66" not in blocklist.read_text(encoding="utf-8")
+    payload = json.loads(data.read_text(encoding="utf-8"))
     assert payload["allowed"] == 1
     assert "203.0.113.66" not in {s["ip"] for s in payload["suspects"]}
     assert "1 allowlisted IP was not checked" in capsys.readouterr().out
@@ -75,7 +75,7 @@ def test_cli_allow_file(tmp_path, capsys):
     allow.write_text("# uptime checks\n203.0.113.66   # the prober\n\n198.51.100.0/24\n")
     blocklist = tmp_path / "b.txt"
     assert main([str(SAMPLE), "--allow", f"@{allow}", "--blocklist", str(blocklist)]) == 0
-    assert "203.0.113.66" not in blocklist.read_text()
+    assert "203.0.113.66" not in blocklist.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(

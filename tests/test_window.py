@@ -81,7 +81,9 @@ def test_terminal_and_html_name_the_window(tmp_path, capsys):
     ]
     assert main(args) == 0
     assert "window 2026-10-20 01:30 → 02:00 UTC" in capsys.readouterr().out
-    assert "Only requests 2026-10-20 01:30 → 02:00 UTC were analysed" in report.read_text()
+    assert "Only requests 2026-10-20 01:30 → 02:00 UTC were analysed" in report.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_no_window_note_without_a_window(capsys):

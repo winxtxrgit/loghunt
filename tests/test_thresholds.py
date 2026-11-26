@@ -67,7 +67,7 @@ def test_json_records_the_thresholds(capsys):
 def test_html_footer_shows_the_thresholds(tmp_path):
     report = tmp_path / "r.html"
     assert main([str(SAMPLE), "-o", str(report), "--login-posts", "77"]) == 0
-    assert "77 login POSTs" in report.read_text()
+    assert "77 login POSTs" in report.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(
